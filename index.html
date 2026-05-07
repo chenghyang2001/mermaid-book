@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mermaid 教學書圖表瀏覽器</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; user-select: none; }
+
+    /* Header */
+    #header { padding: 9px 16px; background: rgba(0,0,0,0.6); border-bottom: 1px solid #1e293b; display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-height: 42px; }
+    #ch-label { font-weight: 700; color: #38bdf8; font-size: 0.85rem; white-space: nowrap; }
+    #topic-label { font-size: 0.8rem; color: #94a3b8; white-space: nowrap; }
+    #img-label { font-size: 0.85rem; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #counter { font-size: 0.8rem; color: #64748b; white-space: nowrap; }
+    #hint { font-size: 0.68rem; color: #334155; white-space: nowrap; }
+
+    /* Main layout */
+    #main { flex: 1; display: flex; overflow: hidden; }
+
+    /* Sidebar */
+    #sidebar { width: 160px; flex-shrink: 0; background: rgba(0,0,0,0.45); border-right: 1px solid #1e293b; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #1e293b transparent; }
+    .ch-btn { width: 100%; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; border: none; background: none; color: #94a3b8; font-size: 0.78rem; text-align: left; border-bottom: 1px solid #1e293b; transition: background 0.15s, color 0.15s; }
+    .ch-btn:hover { background: rgba(56,189,248,0.07); color: #e2e8f0; }
+    .ch-btn.active { background: rgba(56,189,248,0.12); color: #38bdf8; border-left: 3px solid #38bdf8; }
+    .ch-btn .ch-name { font-weight: 600; display: block; }
+    .ch-btn .ch-sub { font-size: 0.68rem; color: #475569; margin-top: 2px; display: block; }
+    .ch-btn .ch-count { background: #1e293b; color: #64748b; font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; flex-shrink: 0; }
+    .ch-btn.active .ch-count { background: rgba(56,189,248,0.2); color: #38bdf8; }
+
+    /* Viewer */
+    #viewer { flex: 1; position: relative; overflow: hidden; background: #0f172a; cursor: grab; }
+    #viewer.dragging { cursor: grabbing; }
+    #main-img { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; max-width: none; max-height: none; transition: opacity 0.15s; pointer-events: none; }
+    #scale-badge { position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.65); color: #64748b; font-size: 0.68rem; padding: 2px 7px; border-radius: 4px; pointer-events: none; z-index: 5; }
+
+    /* Nav buttons */
+    .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; font-size: 1.3rem; width: 40px; height: 72px; cursor: pointer; border-radius: 7px; z-index: 10; transition: background 0.15s; display: flex; align-items: center; justify-content: center; }
+    .nav-btn:hover { background: rgba(255,255,255,0.18); }
+    #prev-btn { left: 8px; }
+    #next-btn { right: 8px; }
+
+    /* Thumbnails */
+    #thumbnails { display: flex; gap: 5px; padding: 7px 10px; background: rgba(0,0,0,0.55); border-top: 1px solid #1e293b; overflow-x: auto; flex-shrink: 0; scrollbar-width: thin; scrollbar-color: #1e293b transparent; }
+    .thumb { width: 64px; height: 42px; object-fit: cover; border-radius: 3px; cursor: pointer; opacity: 0.38; border: 2px solid transparent; transition: opacity 0.15s, border-color 0.15s; flex-shrink: 0; }
+    .thumb.active { opacity: 1; border-color: #38bdf8; }
+    .thumb:hover:not(.active) { opacity: 0.72; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <span id="ch-label">ch01</span>
+  <span id="topic-label"></span>
+  <span id="img-label">載入中…</span>
+  <span id="counter">— / —</span>
+  <span id="hint">← → 換圖 · 側欄切章 · 滾輪縮放 · 拖曳平移 · 雙擊還原</span>
+</div>
+
+<div id="main">
+  <div id="sidebar"></div>
+  <div id="viewer">
+    <button class="nav-btn" id="prev-btn" aria-label="上一張">&#8592;</button>
+    <img id="main-img" src="" alt="">
+    <button class="nav-btn" id="next-btn" aria-label="下一張">&#8594;</button>
+    <div id="scale-badge">100%</div>
+  </div>
+</div>
+
+<div id="thumbnails"></div>
+
+<script>
+const CHAPTERS = [
+  { id:'ch01', label:'ch01', name:'認識Mermaid', images:[
+    {f:'Code/ch01_認識Mermaid/png/0101_基本流程圖.png',l:'基本流程圖',t:''},
+    {f:'Code/ch01_認識Mermaid/png/0102_表單驗證流程.png',l:'表單驗證流程',t:''},
+  ]},
+  { id:'ch02', label:'ch02', name:'流程圖', images:[
+    {f:'Code/ch02_流程圖/節點/png/0201_流程圖TD方向.png',l:'流程圖TD方向',t:'節點'},
+    {f:'Code/ch02_流程圖/節點/png/0202_流程圖LR方向.png',l:'流程圖LR方向',t:'節點'},
+    {f:'Code/ch02_流程圖/節點/png/0203_節點基本定義.png',l:'節點基本定義',t:'節點'},
+    {f:'Code/ch02_流程圖/節點/png/0204_節點形狀總覽.png',l:'節點形狀總覽',t:'節點'},
+    {f:'Code/ch02_流程圖/連結與子圖/png/0205_連結線條類型.png',l:'連結線條類型',t:'連結與子圖'},
+    {f:'Code/ch02_流程圖/連結與子圖/png/0206_雙向箭頭.png',l:'雙向箭頭',t:'連結與子圖'},
+    {f:'Code/ch02_流程圖/連結與子圖/png/0207_多重連結.png',l:'多重連結',t:'連結與子圖'},
+    {f:'Code/ch02_流程圖/連結與子圖/png/0208_連結長度.png',l:'連結長度',t:'連結與子圖'},
+    {f:'Code/ch02_流程圖/連結與子圖/png/0209_子圖基礎.png',l:'子圖基礎',t:'連結與子圖'},
+    {f:'Code/ch02_流程圖/連結與子圖/png/0210_子圖方向.png',l:'子圖方向',t:'連結與子圖'},
+    {f:'Code/ch02_流程圖/樣式與範例/png/0211_節點樣式.png',l:'節點樣式',t:'樣式與範例'},
+    {f:'Code/ch02_流程圖/樣式與範例/png/0212_樣式類別classDef.png',l:'樣式類別classDef',t:'樣式與範例'},
+    {f:'Code/ch02_流程圖/樣式與範例/png/0213_使用者登入流程.png',l:'使用者登入流程',t:'樣式與範例'},
+    {f:'Code/ch02_流程圖/樣式與範例/png/0214_系統架構三層圖.png',l:'系統架構三層圖',t:'樣式與範例'},
+    {f:'Code/ch02_流程圖/AI生成/png/gemma4-三層算計-flowchart.png',l:'gemma4-三層算計',t:'AI生成'},
+  ]},
+  { id:'ch03', label:'ch03', name:'序列圖', images:[
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0301_基本序列圖.png',l:'基本序列圖',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0302_參與者定義.png',l:'參與者定義',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0303_actor與participant.png',l:'actor與participant',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0304_參與者別名.png',l:'參與者別名',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0305_訊息箭頭類型.png',l:'訊息箭頭類型',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0306_雙向箭頭.png',l:'雙向箭頭',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0307_訊息文字換行.png',l:'訊息文字換行',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0308_啟用與停用.png',l:'啟用與停用',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0309_啟用簡寫.png',l:'啟用簡寫',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0310_堆疊啟用.png',l:'堆疊啟用',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0311_單一參與者註解.png',l:'單一參與者註解',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/參與者與訊息/png/0312_跨參與者註解.png',l:'跨參與者註解',t:'參與者與訊息'},
+    {f:'Code/ch03_序列圖/控制結構/png/0313_迴圈控制.png',l:'迴圈控制',t:'控制結構'},
+    {f:'Code/ch03_序列圖/控制結構/png/0314_條件分支alt.png',l:'條件分支alt',t:'控制結構'},
+    {f:'Code/ch03_序列圖/控制結構/png/0315_可選區段opt.png',l:'可選區段opt',t:'控制結構'},
+    {f:'Code/ch03_序列圖/控制結構/png/0316_平行處理par.png',l:'平行處理par',t:'控制結構'},
+    {f:'Code/ch03_序列圖/控制結構/png/0317_關鍵區域critical.png',l:'關鍵區域critical',t:'控制結構'},
+    {f:'Code/ch03_序列圖/控制結構/png/0318_中斷break.png',l:'中斷break',t:'控制結構'},
+    {f:'Code/ch03_序列圖/控制結構/png/0319_參與者分組box.png',l:'參與者分組box',t:'控制結構'},
+    {f:'Code/ch03_序列圖/控制結構/png/0320_背景高亮rect.png',l:'背景高亮rect',t:'控制結構'},
+    {f:'Code/ch03_序列圖/進階與範例/png/0321_自動編號.png',l:'自動編號',t:'進階與範例'},
+    {f:'Code/ch03_序列圖/進階與範例/png/0322_參與者動態建立銷毀.png',l:'參與者動態建立銷毀',t:'進階與範例'},
+    {f:'Code/ch03_序列圖/進階與範例/png/0323_API呼叫流程.png',l:'API呼叫流程',t:'進階與範例'},
+    {f:'Code/ch03_序列圖/進階與範例/png/0324_線上購物流程.png',l:'線上購物流程',t:'進階與範例'},
+  ]},
+  { id:'ch05', label:'ch05', name:'狀態圖', images:[
+    {f:'Code/ch05_狀態圖/基礎語法/png/0501_基本狀態定義.png',l:'基本狀態定義',t:'基礎語法'},
+    {f:'Code/ch05_狀態圖/基礎語法/png/0502_狀態ID定義方式.png',l:'狀態ID定義方式',t:'基礎語法'},
+    {f:'Code/ch05_狀態圖/基礎語法/png/0503_文件審核流程.png',l:'文件審核流程',t:'基礎語法'},
+    {f:'Code/ch05_狀態圖/基礎語法/png/0504_門鎖狀態機.png',l:'門鎖狀態機',t:'基礎語法'},
+    {f:'Code/ch05_狀態圖/基礎語法/png/0505_系統開機流程.png',l:'系統開機流程',t:'基礎語法'},
+    {f:'Code/ch05_狀態圖/基礎語法/png/0506_任務處理流程.png',l:'任務處理流程',t:'基礎語法'},
+    {f:'Code/ch05_狀態圖/基礎語法/png/0507_訂單生命週期.png',l:'訂單生命週期',t:'基礎語法'},
+    {f:'Code/ch05_狀態圖/基礎語法/png/0508_電商訂單流程.png',l:'電商訂單流程',t:'基礎語法'},
+    {f:'Code/ch05_狀態圖/基礎語法/png/0509_遊戲狀態機.png',l:'遊戲狀態機',t:'基礎語法'},
+    {f:'Code/ch05_狀態圖/進階控制/png/0510_巢狀狀態認證.png',l:'巢狀狀態認證',t:'進階控制'},
+    {f:'Code/ch05_狀態圖/進階控制/png/0511_媒體播放器狀態.png',l:'媒體播放器狀態',t:'進階控制'},
+    {f:'Code/ch05_狀態圖/進階控制/png/0512_條件分支choice.png',l:'條件分支choice',t:'進階控制'},
+    {f:'Code/ch05_狀態圖/進階控制/png/0513_分數判斷choice.png',l:'分數判斷choice',t:'進階控制'},
+    {f:'Code/ch05_狀態圖/進階控制/png/0514_fork並行開始.png',l:'fork並行開始',t:'進階控制'},
+    {f:'Code/ch05_狀態圖/進階控制/png/0515_fork與join同步.png',l:'fork與join同步',t:'進階控制'},
+    {f:'Code/ch05_狀態圖/進階控制/png/0516_審批工作流程.png',l:'審批工作流程',t:'進階控制'},
+    {f:'Code/ch05_狀態圖/進階控制/png/0517_資料驗證流程.png',l:'資料驗證流程',t:'進階控制'},
+    {f:'Code/ch05_狀態圖/方向樣式與範例/png/0518_水平方向LR.png',l:'水平方向LR',t:'方向樣式與範例'},
+    {f:'Code/ch05_狀態圖/方向樣式與範例/png/0519_垂直方向TB.png',l:'垂直方向TB',t:'方向樣式與範例'},
+    {f:'Code/ch05_狀態圖/方向樣式與範例/png/0520_方向設定複合.png',l:'方向設定複合',t:'方向樣式與範例'},
+    {f:'Code/ch05_狀態圖/方向樣式與範例/png/0521_自定義樣式成功失敗.png',l:'自定義樣式成功失敗',t:'方向樣式與範例'},
+    {f:'Code/ch05_狀態圖/方向樣式與範例/png/0522_活躍非活躍樣式.png',l:'活躍非活躍樣式',t:'方向樣式與範例'},
+    {f:'Code/ch05_狀態圖/方向樣式與範例/png/0523_電商訂單狀態.png',l:'電商訂單狀態',t:'方向樣式與範例'},
+    {f:'Code/ch05_狀態圖/方向樣式與範例/png/0524_設備待機流程.png',l:'設備待機流程',t:'方向樣式與範例'},
+    {f:'Code/ch05_狀態圖/方向樣式與範例/png/0525_保險審核流程.png',l:'保險審核流程',t:'方向樣式與範例'},
+  ]},
+  { id:'ch10', label:'ch10', name:'系統架構圖', images:[
+    {f:'Code/ch10_系統架構圖/系統架構圖/png/1001_architecture基本API群組.png',l:'architecture基本API群組',t:'系統架構圖'},
+    {f:'Code/ch10_系統架構圖/系統架構圖/png/1002_architecture雲端平台.png',l:'architecture雲端平台',t:'系統架構圖'},
+    {f:'Code/ch10_系統架構圖/系統架構圖/png/1003_architecture基礎設施.png',l:'architecture基礎設施',t:'系統架構圖'},
+    {f:'Code/ch10_系統架構圖/系統架構圖/png/1004_architecture系統架構.png',l:'architecture系統架構',t:'系統架構圖'},
+    {f:'Code/ch10_系統架構圖/系統架構圖/png/1005_architecture磁碟服務.png',l:'architecture磁碟服務',t:'系統架構圖'},
+    {f:'Code/ch10_系統架構圖/系統架構圖/png/1016_architecture閘道層.png',l:'architecture閘道層',t:'系統架構圖'},
+    {f:'Code/ch10_系統架構圖/區塊圖/png/1006_block基本區塊.png',l:'block基本區塊',t:'區塊圖'},
+    {f:'Code/ch10_系統架構圖/區塊圖/png/1007_block三欄佈局.png',l:'block三欄佈局',t:'區塊圖'},
+    {f:'Code/ch10_系統架構圖/區塊圖/png/1008_block前後端.png',l:'block前後端',t:'區塊圖'},
+    {f:'Code/ch10_系統架構圖/區塊圖/png/1009_block系統流程.png',l:'block系統流程',t:'區塊圖'},
+    {f:'Code/ch10_系統架構圖/區塊圖/png/1010_block複雜流程.png',l:'block複雜流程',t:'區塊圖'},
+    {f:'Code/ch10_系統架構圖/區塊圖/png/1011_block巢狀結構.png',l:'block巢狀結構',t:'區塊圖'},
+    {f:'Code/ch10_系統架構圖/區塊圖/png/1017_block採購流程.png',l:'block採購流程',t:'區塊圖'},
+    {f:'Code/ch10_系統架構圖/C4模型/png/1012_C4Context購物上下文.png',l:'C4Context購物上下文',t:'C4模型'},
+    {f:'Code/ch10_系統架構圖/C4模型/png/1013_C4Container購物容器.png',l:'C4Container購物容器',t:'C4模型'},
+    {f:'Code/ch10_系統架構圖/C4模型/png/1014_C4Component伺服器元件.png',l:'C4Component伺服器元件',t:'C4模型'},
+    {f:'Code/ch10_系統架構圖/C4模型/png/1015_C4Deployment購物部署.png',l:'C4Deployment購物部署',t:'C4模型'},
+    {f:'Code/ch10_系統架構圖/C4模型/png/1018_C4Deployment電商AWS.png',l:'C4Deployment電商AWS',t:'C4模型'},
+    {f:'Code/ch10_系統架構圖/AI生成/png/gemma4-三層算計-architecture.png',l:'gemma4-三層算計',t:'AI生成'},
+  ]},
+  { id:'ch11', label:'ch11', name:'心智圖與時間軸', images:[
+    {f:'Code/ch11_心智圖與時間軸/心智圖/png/1101_心智圖核心概念.png',l:'心智圖核心概念',t:'心智圖'},
+    {f:'Code/ch11_心智圖與時間軸/心智圖/png/1102_軟體開發技術棧.png',l:'軟體開發技術棧',t:'心智圖'},
+    {f:'Code/ch11_心智圖與時間軸/心智圖/png/1103_閱讀計畫心智圖.png',l:'閱讀計畫心智圖',t:'心智圖'},
+    {f:'Code/ch11_心智圖與時間軸/心智圖/png/1104_系統架構心智圖.png',l:'系統架構心智圖',t:'心智圖'},
+    {f:'Code/ch11_心智圖與時間軸/心智圖/png/1105_重要知識進階.png',l:'重要知識進階',t:'心智圖'},
+    {f:'Code/ch11_心智圖與時間軸/心智圖/png/1106_新創公司規劃.png',l:'新創公司規劃',t:'心智圖'},
+    {f:'Code/ch11_心智圖與時間軸/心智圖/png/1107_計畫管理心智圖.png',l:'計畫管理心智圖',t:'心智圖'},
+    {f:'Code/ch11_心智圖與時間軸/心智圖/png/1108_技術棧心智圖.png',l:'技術棧心智圖',t:'心智圖'},
+    {f:'Code/ch11_心智圖與時間軸/心智圖/png/1109_健康管理App.png',l:'健康管理App',t:'心智圖'},
+    {f:'Code/ch11_心智圖與時間軸/時間軸/png/1110_台灣科技大事記.png',l:'台灣科技大事記',t:'時間軸'},
+    {f:'Code/ch11_心智圖與時間軸/時間軸/png/1111_開源軟體發展里程.png',l:'開源軟體發展里程',t:'時間軸'},
+    {f:'Code/ch11_心智圖與時間軸/時間軸/png/1112_公司年度成長.png',l:'公司年度成長',t:'時間軸'},
+    {f:'Code/ch11_心智圖與時間軸/時間軸/png/1113_人工智慧技術.png',l:'人工智慧技術',t:'時間軸'},
+    {f:'Code/ch11_心智圖與時間軸/時間軸/png/1114_新媒體電商發展.png',l:'新媒體電商發展',t:'時間軸'},
+    {f:'Code/ch11_心智圖與時間軸/時間軸/png/1115_台灣網路零售發展.png',l:'台灣網路零售發展',t:'時間軸'},
+    {f:'Code/ch11_心智圖與時間軸/AI生成/png/gemma4-三層算計-mindmap.png',l:'gemma4-三層算計',t:'AI生成'},
+  ]},
+  { id:'ch13', label:'ch13', name:'主題樣式與配置', images:[
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1301_預設主題.png',l:'預設主題',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1302_深色主題dark.png',l:'深色主題dark',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1303_森林主題forest.png',l:'森林主題forest',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1304_中性主題neutral.png',l:'中性主題neutral',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1305_淡色主題base配置.png',l:'淡色主題base配置',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1309_連接線樣式.png',l:'連接線樣式',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1310_節點自定義樣式.png',l:'節點自定義樣式',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1311_基本樣式應用.png',l:'基本樣式應用',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1312_漸進樣式鏈.png',l:'漸進樣式鏈',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1313_條件樣式結構.png',l:'條件樣式結構',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1314_自定義主題顏色.png',l:'自定義主題顏色',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1315_自定義主題變數.png',l:'自定義主題變數',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1316_圖表主題設定.png',l:'圖表主題設定',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1317_邊框樣式配置.png',l:'邊框樣式配置',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1318_文字樣式配置.png',l:'文字樣式配置',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/主題樣式/png/1326_完整樣式範例.png',l:'完整樣式範例',t:'主題樣式'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1306_背景顏色配置.png',l:'背景顏色配置',t:'配置'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1307_主要顏色配置.png',l:'主要顏色配置',t:'配置'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1308_字體大小配置.png',l:'字體大小配置',t:'配置'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1319_securityLevel設定.png',l:'securityLevel設定',t:'配置'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1320_無障礙標題.png',l:'無障礙標題',t:'配置'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1321_無障礙描述.png',l:'無障礙描述',t:'配置'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1322_數學公式LaTeX.png',l:'數學公式LaTeX',t:'配置'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1323_FontAwesome圖示.png',l:'FontAwesome圖示',t:'配置'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1324_圖表寬度設定.png',l:'圖表寬度設定',t:'配置'},
+    {f:'Code/ch13_主題樣式與配置/配置/png/1325_主題整合配置.png',l:'主題整合配置',t:'配置'},
+  ]},
+  { id:'ch16', label:'ch16', name:'平台整合與生態系統', images:[
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1601_條件判斷流程.png',l:'條件判斷流程',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1602_前後端架構.png',l:'前後端架構',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1603_Build流程.png',l:'Build流程',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1604_前端MVC架構.png',l:'前端MVC架構',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1605_前台後台系統.png',l:'前台後台系統',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1606_序列圖API互動.png',l:'序列圖API互動',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1607_Markdown整合流程.png',l:'Markdown整合流程',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1610_HTML整合Mermaid.png',l:'HTML整合Mermaid',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1612_使用者輸入流程.png',l:'使用者輸入流程',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1613_錯誤處理流程.png',l:'錯誤處理流程',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1616_前台後台工作流.png',l:'前台後台工作流',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1618_Git整合CI.png',l:'Git整合CI',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1620_序列圖客戶端.png',l:'序列圖客戶端',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/平台整合/png/1621_生產部署架構.png',l:'生產部署架構',t:'平台整合'},
+    {f:'Code/ch16_平台整合與生態系統/生態系統/png/1608_核心模組架構.png',l:'核心模組架構',t:'生態系統'},
+    {f:'Code/ch16_平台整合與生態系統/生態系統/png/1609_mmdc命令行工具.png',l:'mmdc命令行工具',t:'生態系統'},
+    {f:'Code/ch16_平台整合與生態系統/生態系統/png/1611_預設主題應用.png',l:'預設主題應用',t:'生態系統'},
+    {f:'Code/ch16_平台整合與生態系統/生態系統/png/1614_語法解析流程.png',l:'語法解析流程',t:'生態系統'},
+    {f:'Code/ch16_平台整合與生態系統/生態系統/png/1615_主題切換控制.png',l:'主題切換控制',t:'生態系統'},
+    {f:'Code/ch16_平台整合與生態系統/生態系統/png/1617_無框架圖表.png',l:'無框架圖表',t:'生態系統'},
+    {f:'Code/ch16_平台整合與生態系統/生態系統/png/1619_計畫結構圖.png',l:'計畫結構圖',t:'生態系統'},
+    {f:'Code/ch16_平台整合與生態系統/生態系統/png/1622_學習資源地圖.png',l:'學習資源地圖',t:'生態系統'},
+  ]},
+];
+
+// ── State ──────────────────────────────────────────────────
+let chIdx = 0, imgIdx = 0;
+let scale = 1, tx = 0, ty = 0;
+let dragging = false, dragX = 0, dragY = 0, txStart = 0, tyStart = 0;
+
+// ── Elements ───────────────────────────────────────────────
+const img        = document.getElementById('main-img');
+const viewer     = document.getElementById('viewer');
+const sidebar    = document.getElementById('sidebar');
+const thumbsEl   = document.getElementById('thumbnails');
+const chLabel    = document.getElementById('ch-label');
+const topicLabel = document.getElementById('topic-label');
+const imgLabel   = document.getElementById('img-label');
+const counter    = document.getElementById('counter');
+const badge      = document.getElementById('scale-badge');
+
+// ── Build sidebar ──────────────────────────────────────────
+CHAPTERS.forEach((ch, ci) => {
+  const btn = document.createElement('button');
+  btn.className = 'ch-btn' + (ci === 0 ? ' active' : '');
+  btn.innerHTML = `<span><span class="ch-name">${ch.label}</span><span class="ch-sub">${ch.name}</span></span><span class="ch-count">${ch.images.length}</span>`;
+  btn.addEventListener('click', () => loadChapter(ci, 0));
+  sidebar.appendChild(btn);
+});
+
+// ── Transform ──────────────────────────────────────────────
+function applyTransform() {
+  img.style.transform = `matrix(${scale},0,0,${scale},${tx},${ty})`;
+  badge.textContent = Math.round(scale * 100) + '%';
+}
+
+function fitImage() {
+  const vw = viewer.clientWidth, vh = viewer.clientHeight;
+  const iw = img.naturalWidth,   ih = img.naturalHeight;
+  if (!iw || !ih) return;
+  const PAD = 20;
+  scale = Math.min((vw - PAD*2) / iw, (vh - PAD*2) / ih);
+  tx = (vw - iw * scale) / 2;
+  ty = (vh - ih * scale) / 2;
+  applyTransform();
+}
+
+// ── Load chapter ───────────────────────────────────────────
+function loadChapter(ci, ii) {
+  chIdx = ci; imgIdx = ii;
+  document.querySelectorAll('.ch-btn').forEach((b, i) => b.classList.toggle('active', i === ci));
+
+  // Rebuild thumbnails for this chapter
+  thumbsEl.innerHTML = '';
+  CHAPTERS[ci].images.forEach((item, i) => {
+    const t = document.createElement('img');
+    t.src = item.f; t.className = 'thumb' + (i === ii ? ' active' : ''); t.title = item.l;
+    t.addEventListener('click', () => showImage(ci, i));
+    thumbsEl.appendChild(t);
+  });
+
+  showImage(ci, ii);
+}
+
+// ── Show image ─────────────────────────────────────────────
+function showImage(ci, ii) {
+  chIdx = ci;
+  imgIdx = ((ii % CHAPTERS[ci].images.length) + CHAPTERS[ci].images.length) % CHAPTERS[ci].images.length;
+  const item = CHAPTERS[ci].images[imgIdx];
+
+  img.style.opacity = '0';
+  img.src = item.f;
+  img.onload = () => { fitImage(); img.style.opacity = '1'; };
+
+  chLabel.textContent    = CHAPTERS[ci].label + ' ' + CHAPTERS[ci].name;
+  topicLabel.textContent = item.t ? '› ' + item.t : '';
+  imgLabel.textContent   = item.l;
+  counter.textContent    = `${imgIdx + 1} / ${CHAPTERS[ci].images.length}`;
+
+  document.querySelectorAll('.thumb').forEach((t, i) => {
+    t.classList.toggle('active', i === imgIdx);
+    if (i === imgIdx) t.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+  });
+}
+
+// Init
+loadChapter(0, 0);
+
+// ── Arrow keys ─────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') showImage(chIdx, imgIdx + 1);
+  else if (e.key === 'ArrowLeft') showImage(chIdx, imgIdx - 1);
+  else if (e.key === 'Escape' || e.key === '0') fitImage();
+});
+
+document.getElementById('prev-btn').addEventListener('click', () => showImage(chIdx, imgIdx - 1));
+document.getElementById('next-btn').addEventListener('click', () => showImage(chIdx, imgIdx + 1));
+
+// ── Scroll zoom (cursor-centred) ───────────────────────────
+viewer.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.13 : 1/1.13;
+  const ns = Math.min(Math.max(scale * factor, 0.1), 25);
+  const vr = viewer.getBoundingClientRect();
+  const cx = e.clientX - vr.left, cy = e.clientY - vr.top;
+  tx = cx - (cx - tx) * (ns / scale);
+  ty = cy - (cy - ty) * (ns / scale);
+  scale = ns;
+  applyTransform();
+}, { passive: false });
+
+// ── Drag pan ───────────────────────────────────────────────
+viewer.addEventListener('mousedown', e => {
+  if (e.button !== 0 || e.target.classList.contains('nav-btn')) return;
+  dragging = true; dragX = e.clientX; dragY = e.clientY; txStart = tx; tyStart = ty;
+  viewer.classList.add('dragging');
+});
+document.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  tx = txStart + (e.clientX - dragX); ty = tyStart + (e.clientY - dragY);
+  applyTransform();
+});
+document.addEventListener('mouseup', () => { dragging = false; viewer.classList.remove('dragging'); });
+
+// ── Double-click reset ─────────────────────────────────────
+viewer.addEventListener('dblclick', fitImage);
+window.addEventListener('resize', fitImage);
+</script>
+</body>
+</html>
