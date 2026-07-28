@@ -151,6 +151,10 @@
     }
     .dd-loop.active .loop-check { border-color: #38bdf8; background: rgba(56,189,248,0.18); color: #38bdf8; }
     .dd-loop.active .loop-check::after { content: '✓'; }
+    .dd-mode { padding: 7px 16px 7px 34px; font-size: 0.79rem; color: #94a3b8; cursor: pointer; position: relative; }
+    .dd-mode:hover { background: rgba(255,255,255,0.06); color: #e2e8f0; }
+    .dd-mode.active { color: #38bdf8; font-weight: 600; }
+    .dd-mode.active::before { content: '✓'; position: absolute; left: 14px; color: #38bdf8; }
   </style>
 </head>
 <body>
@@ -170,6 +174,9 @@
       <div class="dd-speed" data-ms="30000">每隔 30 秒</div>
       <div class="dd-divider"></div>
       <div class="dd-loop active" id="loop-item"><span class="loop-check"></span>循環播放</div>
+      <div class="dd-divider"></div>
+      <div class="dd-mode active" data-mode="chapter">本章循環</div>
+      <div class="dd-mode" data-mode="book">全書連播</div>
     </div>
   </div>
 </div>
@@ -365,6 +372,7 @@ let dragging = false, dragX = 0, dragY = 0, txStart = 0, tyStart = 0;
 // ── Autoplay state ─────────────────────────────────────────
 let autoSpeed = 5000;
 let autoLoop  = true;
+let playMode  = 'chapter';
 let autoTimer = null;
 let progTimer = null;
 let progStart = 0;
@@ -442,6 +450,7 @@ function updateProgress() {
 function autoAdvance() {
   const total = CHAPTERS[chIdx].images.length;
   const isLast = imgIdx >= total - 1;
+  if (isLast && playMode === 'book') { loadChapter((chIdx + 1) % CHAPTERS.length, 0); startAutoplay(); return; }
   if (isLast && !autoLoop) { stopAutoplay(); return; }
   // showImage handles the modulo wrap for loop case
   showImage(chIdx, imgIdx + 1);
@@ -480,6 +489,13 @@ document.querySelectorAll('.dd-speed').forEach(el => {
 loopItem.addEventListener('click', () => {
   autoLoop = !autoLoop;
   loopItem.classList.toggle('active', autoLoop);
+});
+
+document.querySelectorAll('.dd-mode').forEach(el => {
+  el.addEventListener('click', () => {
+    playMode = el.dataset.mode;
+    document.querySelectorAll('.dd-mode').forEach(m => m.classList.toggle('active', m === el));
+  });
 });
 
 document.addEventListener('click', e => {
